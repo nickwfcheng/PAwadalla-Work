@@ -1,0 +1,3 @@
+samtools view -b -F 4 -f 2 file.bam > mapped.bam
+samtools view -b -f 2 file.bam > mapped.bam
+
