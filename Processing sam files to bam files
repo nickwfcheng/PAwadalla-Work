@@ -12,6 +12,9 @@ samtools view -Sb seq.sam | samtools sort -o seq.sorted.bam
 #Building an index for bam files
 samtools index seq.sorted.bam
 
+#Other information
+https://bioinformaticsdotca.github.io/bicg_2018_ia2
+
 
 ###Visualising bam files###
 samtools view seq.sorted.bam 9:14,196,000-14,197,000
