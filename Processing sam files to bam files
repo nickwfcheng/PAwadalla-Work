@@ -1,3 +1,8 @@
+#Building index for fasta files
+bwa index input.fa > output_index.log 2>output_index.err &
+
+bowtie2-build -t 8 ref.fa input.fa > output_index.log 2>output_index.err &
+
 #Aligning sequencing fastq to reference fasta
 bwa mem -t 4 -p ref.fasta seq.fastq > seq.sam
 
