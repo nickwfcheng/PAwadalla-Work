@@ -1,0 +1,25 @@
+#Aligning sequencing fastq to reference fasta
+bwa mem -t 4 -p ref.fasta seq.fastq > seq.sam
+
+#Converting sam files to bam files & sorting them by position
+samtools view -Sb seq.sam | samtools sort -o seq.sorted.bam
+
+#Building an index for bam files
+samtools index seq.sorted.bam
+
+
+###Visualising bam files###
+samtools view seq.sorted.bam 9:14,196,000-14,197,000
+
+#Summary of aignments
+samtools flagstat seq.sorted.bam
+
+#Count number of reads mapped to each chromosome
+samtools idxstats seq.sorted.bam
+
+#Count number of mapped reads to specific chromosomes '$1' specifies column 
+samtools idxstats seq.sorted.bam | awk '$1 == "9"'
+
+#Viewing alignment for specific position
+samtools mpileup -f ref.fasta -r 9:14,196,087-14,196,087 seq.sorted.bam
+
