@@ -12,6 +12,9 @@ samtools view -Sb seq.sam | samtools sort -o seq.sorted.bam
 #Building an index for bam files
 samtools index seq.sorted.bam
 
+#Keeping only mapped and paired reads
+samtools view -b -F 4 -f 2 file.bam > mapped.bam #Extracting only mapped (-F 4) and properly paired reads (-f 2)
+
 #Other information
 https://bioinformaticsdotca.github.io/bicg_2018_ia2
 
