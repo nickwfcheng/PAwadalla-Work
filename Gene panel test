@@ -1,0 +1,535 @@
+#Things to do before running script
+- Create cancer directory for wkdir
+- Create $WKDIR/rscripts and $WKDIR/bashscripts
+- Change test12 to whatever test
+- Change 'BRCA' to target cancer code
+- Change variant_filter(merged_snv, 0.01) to target threshold
+- Change breast to whatever cancer
+- Write chr1.sh and chr1.R and upload to resepective directories 
+- Chmod u+x breast1.R
+- Convert gene_panel.txt to gene_panel.bed with:
+cut -f1,2,3 gene_list.txt | sed -e '1d' > gene_panel.bed
+- Run script:
+qsub -l h_vmem=16g -l h_stack=256m -pe smp 4 ./breast_test12.sh
+- Run script:
+##Running scripts##
+cd $WKDIR/bashscripts
+for i in *.sh; do qsub -l h_vmem=16g $i; done
+#Running script
+qsub -l h_vmem=32g breast_test12.2.sh
+qsub -l h_vmem=64g breast_test12.3.sh
+
+#breast_test12.sh
+#!/bin/bash
+source /oicr/local/Modules/default/init/bash
+#Change breast to whatever cancer
+WKDIR=/.mounts/labs/awadallalab/private/ncheng/ctDNA_test/test_panel/breast
+#Change testing dir to run number
+TESTINGDIR=$WKDIR/test12
+RDSDIR=$TESTINGDIR/cancer_RDS
+DETECTDIR=$TESTINGDIR/panel_detect
+CANCERDIR=/.mounts/labs/awadallalab/private/ncheng/vcfs/pcawg_vcfs
+CONTROLDIR=/.mounts/labs/awadallalab/private/ncheng/vcfs/1000genomes
+TGDIR=$WKDIR/test12/1k_detect
+ONCDIR=$WKDIR/test12/1kg_annotated_panel
+FILTERDIR=$TESTINGDIR/filter_files
+mkdir -p $TESTINGDIR
+mkdir -p $DETECTDIR
+mkdir -p $RDSDIR
+mkdir -p $FILTERDIR
+mkdir -p $TGDIR
+mkdir -p $ONCDIR
+module load BEDTools/2.21.0
+
+#Analysing 1000genome vcfs with gene panel##
+#Change test12 to different test
+cd $CONTROLDIR
+for f in *.gz; do zcat $f | awk '{if($0 !~ /^#/) print "chr"$0; else print $0}' | bedtools intersect -header -a stdin -b $WKDIR/gene_panel.bed > $TGDIR/$f.txt; done
+cd $TGDIR
+source /.mounts/labs/awadallalab/private/ncheng/softwares/onc_env/bin/activate
+for f in *.txt; do sed '/^##/ d' $f | cut -f1-9 > $f.cut.tsv; done
+for f in *.txt; do sed '/^##/ d' $f > $f.vcf.txt; done
+for g in *.cut.tsv; do oncotator --db-dir /.mounts/labs/awadallalab/private/ncheng/softwares/oncotator_v1_ds_April052016 -v --input_format=VCF --output_format=TCGAMAF $g $g.maf.annotated hg19; done
+for f in *.maf.annotated; do sed '/^##/ d' $f | cut -f1,5,6,7,9 > $ONCDIR/$f.cut_final.txt; done
+cd $TGDIR
+for i in $TGDIR/*.vcf.gz.txt.vcf.txt; do ln -s $i ../1kg_annotated_panel/; done
+
+#Copying bash and r scripts for each chromosome
+cd $WKDIR/bashscripts
+for i in {2..22}; do sed s/chr1/chr${i}/g chr1.sh  > chr$i.sh ; done
+sed s/'ALL.chr1.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf.gz.txt.vcf.txt'/'ALL.chrX.phase3_shapeit2_mvncall_integrated_v1a.20130502.genotypes.vcf.gz.txt.vcf.txt'/g chr1.sh | sed s/chr1/chrX/g > chrX.sh
+sed s/'ALL.chr1.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf.gz.txt.vcf.txt'/'ALL.chrY.phase3_integrated_v1a.20130502.genotypes.vcf.gz.txt.vcf.txt'/g chr1.sh | sed s/chr1/chrY/g  > chrY.sh
+for i in *.sh; do chmod u+x $i; done
+
+cd $WKDIR/rscripts
+for i in {2..22}; do sed s/chr1/chr${i}/g chr1.R  > chr$i.R ; done
+sed s/chr1/chrX/g chr1.R  > chrX.R
+sed s/chr1/chrY/g chr1.R  > chrY.R
+for i in *.R; do chmod u+x $i; done
+
+#breast_test12.2.sh
+#!/bin/bash
+source /oicr/local/Modules/default/init/bash
+#Change breast to whatever cancer
+WKDIR=/.mounts/labs/awadallalab/private/ncheng/ctDNA_test/test_panel/breast
+#Change testing dir to run number
+TESTINGDIR=$WKDIR/test12
+RDSDIR=$TESTINGDIR/cancer_RDS
+DETECTDIR=$TESTINGDIR/panel_detect
+CANCERDIR=/.mounts/labs/awadallalab/private/ncheng/vcfs/pcawg_vcfs
+CONTROLDIR=/.mounts/labs/awadallalab/private/ncheng/vcfs/1000genomes
+TGDIR=$WKDIR/test12/1k_detect
+ONCDIR=$WKDIR/test12/1kg_annotated_panel
+FILTERDIR=$TESTINGDIR/filter_files
+mkdir -p $TESTINGDIR
+mkdir -p $DETECTDIR
+mkdir -p $RDSDIR
+mkdir -p $FILTERDIR
+mkdir -p $TGDIR
+mkdir -p $ONCDIR
+module load BEDTools/2.21.0
+cd $TESTINGDIR
+mv 1kg_annotated_panel/*snp_variants.txt filter_files/
+cd $FILTERDIR
+for i in *snp_variants.txt; do sed '1d' $i | cat >> combined_snp_variants.bed; done
+#Processing pcawg files
+cd $CANCERDIR
+for f in *; do mkdir -p $TESTINGDIR/panel/$f/vcf;done
+for f in */vcf/*.gz; do zcat $f | awk '{if($0 !~ /^#/) print "chr"$0; else print $0}' | bedtools intersect -header -a stdin -b $WKDIR/gene_panel.bed | bedtools intersect -a stdin -b $FILTERDIR/combined_snp_variants.bed > $TESTINGDIR/panel/$f.txt; done
+cd $TESTINGDIR/panel/
+source /.mounts/labs/awadallalab/private/ncheng/softwares/onc_env/bin/activate
+for g in */vcf/*.txt; do oncotator --db-dir /.mounts/labs/awadallalab/private/ncheng/softwares/oncotator_v1_ds_April052016 -v --input_format=VCF --output_format=TCGAMAF $g $g.maf.annotated hg19; done
+for f in */vcf/*.maf.annotated; do sed '/^#/ d' $f | cut -f1,5,6,7,9 > $TESTINGDIR/panel/$f.cut_final.txt; done
+deactivate
+rm oncotator.log
+source /oicr/local/Modules/default/init/bash
+module load R/3.4.0
+cd $WKDIR
+./breast1.R
+mv $TESTINGDIR/panel/*/vcf/*.RDS $RDSDIR
+mv $TESTINGDIR/panel/*/vcf/*.vcf $FILTERDIR
+#Processing script
+cd $TESTINGDIR
+mkdir all_RDS
+for i in */*.RDS; do ln -s /.mounts/labs/awadallalab/private/ncheng/ctDNA_test/test_panel/breast/test12/$i ../test12/all_RDS; done
+
+
+##chr1.sh
+#!/bin/bash
+source /oicr/local/Modules/default/init/bash
+module load R/3.4.0
+WKDIR=/.mounts/labs/awadallalab/private/ncheng/ctDNA_test/test_panel/breast
+TESTINGDIR=$WKDIR/test12
+RSCRIPT=$WKDIR/rscripts
+RDSDIR=$TESTINGDIR/control_rds
+mkdir -p $RDSDIR
+cd $TESTINGDIR/1kg_annotated_panel
+sed -e s/'0|0'/'.|.'/g ALL.chr1.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf.gz.txt.vcf.txt | sed -e s/'\.|\.'/'0'/g | sed -e s/'.|.'/'1'/g | cut --complement -f4-9 > ALL.chr1.filtered.txt
+cd $RSCRIPT
+./chr1.R 
+cd $TESTINGDIR/1kg_annotated_panel
+mv *snv_merged.RDS $RDSDIR
+
+
+##breast1.R##
+#!/usr/bin/env Rscript
+setwd('/.mounts/labs/awadallalab/private/ncheng/ctDNA_test/test_panel/breast/test12/panel')
+parent_d = getwd()
+cancers = list.files()
+for (i in 1:length(cancers)) {
+  tmp = paste(parent_d, cancers[i], 'vcf', sep = '/')
+  setwd(tmp)
+  if (length(list.files(pattern = '*.cut_final.txt')) > 0) {
+    gene_files = list.files(pattern = '*.cut_final.txt')
+    gene_data = lapply(gene_files, function(x) {
+      tmp <- try(read.table(x, head = T, stringsAsFactors = F, sep = '\t', fill = F, quote=""))
+      if(inherits(tmp, 'try-error')) {
+        return(data.frame(matrix(nrow=0, ncol = 5))) 
+      } else {
+        return(tmp)
+      }
+    })
+    for (k in 1:length(gene_data)) {
+      gene_data[[k]] = gene_data[[k]][,c(2,3,1,5)]
+      colnames(gene_data[[k]]) = c('chrom', 'pos', 'symbol', 'variant_classification')
+      gene_data[[k]]$chrom = sub("^", "chr", gene_data[[k]]$chrom )
+    }
+    panel = gsub('/.mounts/labs/awadallalab/private/ncheng/ctDNA_test/test_panel/breast/test12/panel/', '', getwd())
+    panel = sub('/.*', '', panel)
+    file = paste(panel,'.RDS', sep = '')
+    saveRDS(gene_data, file) 
+    write.table(gene_data, paste(panel,'.vcf', sep = ''), sep = '\t', row.names = F, quote = F)
+  }
+}
+
+##chr1.R##
+#!/usr/bin/env Rscript
+setwd('/.mounts/labs/awadallalab/private/ncheng/ctDNA_test/test_panel/breast/test12/1kg_annotated_panel')
+z = list.files(pattern = 'ALL.chr1.filtered.txt')
+snv_raw = read.table(z[1], sep = '\t', header = F, stringsAsFactors = F)
+tmp2 = list.files(pattern = 'ALL.chr1.*.cut.tsv.maf.annotated.cut_final.txt')
+variant_class = read.table(tmp2[1], sep = '\t', header = T, stringsAsFactors = F, quote = "")
+colnames(snv_raw)[1:3] =  c('chrom', 'pos', 'id')
+variant_class = variant_class[,-4]
+colnames(variant_class) =  c('symbol', 'chrom', 'pos', 'variant_classification')
+variant_class = variant_class[,c(2,3,1,4)]
+variant_class[,1] = sub('^', 'chr', variant_class[,1])
+merged_snv = merge(variant_class, snv_raw, by = c('chrom', 'pos'), all = T)
+merged_snv = (merged_snv[!duplicated(merged_snv[,c(1,2,3,4,5)]),])
+merged_snv = subset(merged_snv, (pos %in% snv_raw$pos))
+library(tibble)
+merged_snv =  add_column(merged_snv, cancer = '1kgenomes', .after = 4)
+
+variant_filter <- function(snv_list, limit) {
+  tmp = snv_list
+  snv_count = rowSums(tmp[,-c(1:6)])/ncol(tmp[,-c(1:6)])
+  tmp1 = cbind(tmp[,c(1:6)], snv_count)
+  tmp1 = tmp1[which(tmp1[,7] >= limit),]
+  return(tmp1)
+}
+snv_list_filt0.01 = variant_filter(merged_snv, 0.01)
+write.table(snv_list_filt0.01[,c(1:2)], paste(gsub('.filtered.txt', '', z), '_snp_variants.txt', sep = ''), sep = '\t', row.names = F, quote = F)
+library(dplyr)
+merged_snv = anti_join(merged_snv, snv_list_filt0.01, by = c('chrom', 'pos'))
+saveRDS(merged_snv, paste(gsub('.filtered.txt', '', z), '_snv_merged.RDS', sep = ''))
+write.table(merged_snv, paste(gsub('.filtered.txt', '', z), '_snv_merged.txt', sep = ''), sep = '\t', row.names = F, quote = F)
+
+
+####################################Part 3####################################
+##breast_test12.3.sh
+#!/bin/bash
+#Change breast to whatever cancer
+WKDIR=/.mounts/labs/awadallalab/private/ncheng/ctDNA_test/test_panel/breast
+#Change testing dir to run number
+TESTINGDIR=$WKDIR/test12
+RDSDIR=$TESTINGDIR/cancer_RDS
+DETECTDIR=$TESTINGDIR/panel_detect
+CANCERDIR=/.mounts/labs/awadallalab/private/ncheng/vcfs/pcawg_vcfs
+CONTROLDIR=/.mounts/labs/awadallalab/private/ncheng/vcfs/1000genomes
+TGDIR=$WKDIR/test12/1k_detect
+ONCDIR=$WKDIR/test12/1kg_annotated_panel
+source /oicr/local/Modules/default/init/bash
+module load R/3.4.0
+cd $TESTINGDIR
+mkdir all_RDS
+for i in */*.RDS; do ln -s /.mounts/labs/awadallalab/private/ncheng/ctDNA_test/test_panel/breast/test12/$i ../test12/all_RDS; done
+cd $WKDIR
+./RDS_generate.R
+mkdir figure_RDS
+mv *1.RDS figure_RDS/
+
+
+
+##RDS_generate.R
+#!/usr/bin/env Rscript
+setwd('/.mounts/labs/awadallalab/private/ncheng/ctDNA_test/test_panel/breast/test12/all_RDS')
+require(data.table)
+files = list.files(pattern = '*.-.*')
+save = 'analysis9_4.RData'
+save.image(save)
+dat_list = lapply(files, function (x) readRDS(x))
+save.image(save)
+
+#Dat_list reformatting
+for(i in 1:length(dat_list)) {
+  for (j in 1:length(dat_list[[i]])) {
+    dat_list[[i]][[j]] = cbind(dat_list[[i]][[j]], rep(gsub('-.*', '', gsub('.RDS', '', files[i])),nrow(dat_list[[i]][[j]])) ,rep(1, nrow(dat_list[[i]][[j]])))
+    colnames(dat_list[[i]][[j]])[6] = paste(gsub('.RDS', '', files[i]), 'Sample', as.character(j), sep = '_') 
+    colnames(dat_list[[i]][[j]])[5] = 'cancer'
+  }
+}
+
+#Merging dataframes 
+snv_list = sapply(dat_list, function(x) {Reduce(function(dtf1, dtf2) merge(dtf1, dtf2, by = c('chrom', 'pos','symbol', 'variant_classification','cancer'), all = TRUE), x)})
+for (i in 1:length(snv_list)) {
+  snv_list[[i]][is.na(snv_list[[i]])] <- 0
+}
+rm(dat_list)
+
+#Reading in 1k genome data
+snv_merged_files = list.files(pattern = '*_snv_merged.RDS')
+library(plyr)
+snv_list[[(length(snv_list) + 1)]] = rbind.fill(lapply(snv_merged_files, function (x) readRDS(x)))
+snv_list[[length(snv_list)]] = snv_list[[length(snv_list)]][,-6]
+save.image(save)
+
+################Analysis - Proportion of cases with variant in given gene ################
+#Proportion of cases with a variant in a given gene
+gene_count <- function(x) {
+  tmp_fun <- function(snv_merged_merged) {
+    gene_no = nrow(data.frame(table(snv_merged_merged[,3])))
+    gene_count = data.frame(matrix(ncol = gene_no, nrow = ncol(snv_merged_merged) - 5))
+    for (i in 1:gene_no) {
+      tmp4 = snv_merged_merged[which(snv_merged_merged$symbol == data.frame(table(snv_merged_merged$symbol))[i,1]),]
+      gene_count[,i] = colSums(tmp4[,-c(1:5)])
+      colnames(gene_count)[i] = as.character(data.frame(table(snv_merged_merged$symbol))[i,1])
+    }
+    gene_count = cbind(data.frame(rep(snv_merged_merged[1,5], nrow(gene_count))), gene_count)
+    colnames(gene_count)[1] = 'cancer'
+    return(gene_count)
+  }
+  tmp5 = sapply(x, tmp_fun)
+  require(plyr)
+  tmp6 = rbind.fill(tmp5)
+  tmp6[is.na(tmp6)] <- 0
+  return(tmp6)
+}
+gene_count_freq <- function(gene_type_exon) {
+  gene_case_count_exon = data.frame(matrix(nrow = length(table(gene_type_exon[,1])), ncol = ncol(gene_type_exon)-1))
+  gene_case_count_exon[,1] = data.frame(table(gene_type_exon[,1]))[,1]
+  for (i in 1:length(table(gene_type_exon[,1]))){
+    tmp1 = gene_type_exon[which(gene_type_exon[,1] == as.character(data.frame(table(gene_type_exon[,1]))[i,1])),][,-c(1, ncol(gene_type_exon))]
+    for (j in 1:ncol(tmp1)){
+      tmp2 = tmp1[which(tmp1[,j] > 0),]
+      gene_case_count_exon[i,j+1] = nrow(tmp2)/nrow(tmp1)
+    }
+  }
+  colnames(gene_case_count_exon) = colnames(gene_type_exon[,-(ncol(gene_type_exon))])
+  rownames(gene_case_count_exon) = as.character(gene_case_count_exon[,1])
+  gene_case_count_exon = as.matrix(gene_case_count_exon[,-1])
+  return(gene_case_count_exon)
+}
+snv_filt0.05_freq = gene_count_freq(gene_count(snv_list))
+snv_filt0.05_freq = saveRDS(snv_filt0.05_freq, 'snv_filt0.05_freq1.RDS')
+rm(snv_filt0.05_freq)
+
+#Proportion of cases with a variant in a given gene (exon)
+gene_exon_count <- function(x) {
+  gene_count_exon <- function(snv_merged_merged) {
+    snv_merged_exons = snv_merged_merged[which(snv_merged_merged[,4] == 'Missense_Mutation' | snv_merged_merged[,4] == 'Nonsense_Mutation' | snv_merged_merged[,4] == 'De_novo_Start_InFrame' | snv_merged_merged[,4] == 'Start_Codon_SNP'| snv_merged_merged[,4] == 'Nonstop_Mutation' | snv_merged_merged[,4] == 'De_novo_Start_OutOfFrame'),]
+    gene_exon_no = nrow(data.frame(table(snv_merged_exons[,3])))
+    gene_exon_count = data.frame(matrix(ncol = gene_exon_no, nrow = ncol(snv_merged_exons) - 5))
+    for (i in 1:gene_exon_no) {
+      tmp4 = snv_merged_exons[which(snv_merged_exons$symbol == data.frame(table(snv_merged_exons$symbol))[i,1]),]
+      gene_exon_count[,i] = colSums(tmp4[,-c(1:5)])
+      colnames(gene_exon_count)[i] = as.character(data.frame(table(snv_merged_exons$symbol))[i,1])
+    }
+    gene_exon_count = cbind(data.frame(rep(snv_merged_merged[1,5], nrow(gene_exon_count))), gene_exon_count)
+    colnames(gene_exon_count)[1] = 'cancer'
+    return(gene_exon_count)
+  }
+  tmp5 = sapply(x, gene_count_exon)
+  require(plyr)
+  tmp6 = rbind.fill(tmp5)
+  tmp6[is.na(tmp6)] <- 0
+  return(tmp6)
+}
+snv_filt0.05_exon_freq = gene_count_freq(gene_exon_count(snv_list))
+snv_filt0.05_exon_freq = saveRDS(snv_filt0.05_exon_freq, 'snv_filt0.05_exon_freq1.RDS')
+rm(snv_filt0.05_exon_freq)
+save.image(save)
+
+################Analysis - Variants in BRCA################
+#Keeping variants that are present in BRCA 
+cancer_variant_filt <- function(snv_list, t, cancer) {
+  variant_count <- function(snv_df) {
+    tmp = cbind(snv_df[,1:5], data.frame(rowSums(snv_df[,-c(1:5)])))
+    colnames(tmp)[6] = 'snv_count'
+    tmp = cbind(tmp, rep(ncol(snv_df[,-c(1:5)]), nrow(snv_df)))
+    colnames(tmp)[7] = 'total_samples'
+    return(tmp)
+  }
+  #Counting number of variants 
+  snv_df = lapply(snv_list, variant_count)
+  list_merge <- function(snv_df) {
+    require(plyr)
+    tmp2 = rbind.fill(snv_df)
+    tmp2[is.na(tmp2)] <- 0
+    return(tmp2)
+  }
+  test = list_merge(snv_df)
+  tmp3 = test[which(test[,5] == cancer),]
+  
+  require(plyr)
+  cancer_df = tmp3
+  cancer_df = cbind(cancer_df, data.frame(cancer_df[,6]/cancer_df[,7]))
+  colnames(cancer_df)[8] = 'proportion of cases' 
+  cancer_df_filt = cancer_df[which(cancer_df[,8] >= t),]
+  tmp4 = snv_list
+  require(dplyr)
+  for (i in 1:length(snv_list)) {
+    tmp4[[i]][,2] = as.character(tmp4[[i]][,2])
+    tmp4[[i]] = semi_join(x = tmp4[[i]], y = cancer_df_filt, by = c('chrom', 'pos'))
+  }
+  return(tmp4)
+}
+snv_list_cancer_filt = cancer_variant_filt(snv_list, 0, 'BRCA')
+
+#Counting proportion of cases with a variant in given gene for only breast cancer
+gene_count <- function(x) {
+  tmp_fun <- function(snv_merged_merged) {
+    if (nrow(snv_merged_merged) > 0) {
+      gene_no = nrow(data.frame(table(snv_merged_merged[,3])))
+      gene_count = data.frame(matrix(ncol = gene_no, nrow = ncol(snv_merged_merged) - 5))
+      for (i in 1:gene_no) {
+        tmp4 = snv_merged_merged[which(snv_merged_merged$symbol == data.frame(table(snv_merged_merged$symbol))[i,1]),]
+        gene_count[,i] = colSums(tmp4[,-c(1:5)])
+        colnames(gene_count)[i] = as.character(data.frame(table(snv_merged_merged$symbol))[i,1])
+      }
+      gene_count = cbind(data.frame(rep(snv_merged_merged[1,5], nrow(gene_count))), gene_count)
+      colnames(gene_count)[1] = 'cancer'
+      return(gene_count)
+    } else {
+      gene_count = data.frame(matrix(nrow = ncol(snv_merged_merged), ncol = 1))
+      colnames(gene_count)[1] = 'cancer'
+      gene_count[,1] =gsub('-.*', '', colnames(snv_merged_merged)[7]) 
+      return(gene_count)
+    }
+  }
+  tmp5 = sapply(x, tmp_fun)
+  require(plyr)
+  tmp6 = rbind.fill(tmp5)
+  tmp6[is.na(tmp6)] <- 0
+  return(tmp6)
+}
+BRCA_variant_snv_list_cancer_filt = gene_count_freq(gene_count(snv_list_cancer_filt))
+saveRDS(BRCA_variant_snv_list_cancer_filt, 'BRCA_variant_snv_list_cancer_filt1.RDS')
+rm(BRCA_variant_snv_list_cancer_filt)
+
+#Calculating AUC for BRCA variants
+cancer_auc <- function(snv_list_cancer_filt, cancer) {
+  snv_count <- function(tmp_df) {
+    tmp1 = cbind(tmp_df[,c(1:5)], data.frame(rowSums(tmp_df[,-c(1:5)])), data.frame(rep(ncol(tmp_df[,-c(1:5)]), nrow(tmp_df))))
+    colnames(tmp1)[c(6,7)] = c('snv_cases', 'total_cases')
+    return(tmp1)
+  }
+  tmp = lapply(snv_list_cancer_filt, snv_count)
+  
+  require(plyr)
+  tmp2 = rbind.fill(tmp)
+  target_cancer = tmp2[which(tmp2[,5] == cancer),]
+  
+  target_cancer_variants = ddply(target_cancer,c('chrom', 'pos', 'symbol', 'variant_classification', 'cancer'),numcolwise(sum))
+  target_cancer_variants = target_cancer_variants[,c(1:4)]
+  
+  complete_dfs <- function(tmp_df ,variants) {
+    tmp3 = merge(tmp_df, variants,  all = T, by=c('chrom','pos', 'symbol', 'variant_classification'))
+    tmp3[,5] = tmp_df[1,5]
+    tmp3[,7] = tmp_df[1,7]
+    tmp3[is.na(tmp3)] <- 0
+    return(tmp3)
+  }
+  tmp4 = list()
+  for (i in 1:length(tmp)) {
+    if(nrow(tmp[[i]]) > 0) {
+      tmp4[[i]] = unique(complete_dfs(tmp[[i]], target_cancer_variants))
+      tmp4[[i]] = tmp4[[i]][!duplicated(tmp4[[i]][,c(1:2)]),]
+    } else {
+      tmp4[[i]] =  unique(complete_dfs(tmp[[i]], target_cancer_variants))
+      tmp4[[i]][,5] = gsub('-.*', '', colnames(snv_list_cancer_filt[[i]])[7]) 
+      tmp4[[i]] = tmp4[[i]][!duplicated(tmp4[[i]][,c(1:2)]),]
+    }
+  }
+  tmp5 = rbind.fill(tmp4)
+  other_cancer = tmp5[which(tmp5[,5] != cancer & tmp5[,5] != '1kgenomes'),]
+  target_cancer = tmp5[which(tmp5[,5] == cancer),]
+  control = tmp5[which(tmp5[,5] == '1kgenomes'),]
+  require(plyr)
+  other_cancer = ddply(other_cancer,c('chrom', 'pos', 'symbol', 'variant_classification'),numcolwise(sum))
+  target_cancer = ddply(target_cancer,c('chrom', 'pos', 'symbol', 'variant_classification'),numcolwise(sum))
+  control = ddply(control,c('chrom', 'pos', 'symbol', 'variant_classification'),numcolwise(sum))
+  colnames(other_cancer)[5:6] = c('other_cancer_snv_cases', 'other_cancer_total_cases')
+  colnames(target_cancer)[5:6] = c('target_cancer_snv_cases', 'target_cancer_total_cases')
+  colnames(control)[5:6] = c('control_snv_cases', 'control_total_cases')
+  combined_df = merge(target_cancer, other_cancer)
+  combined_df = merge(combined_df, control)
+  #Calculating specificity, sensitivity and recall
+  specificity_recall = combined_df[,5]/combined_df[,6]
+  sensitivity_other_cancers = (combined_df[,8] - combined_df[,7])/combined_df[,8]
+  sensitivity_1kgenomes = (combined_df[,10] - combined_df[,9])/combined_df[,10]
+  precision_other_cancers = combined_df[,5]/(combined_df[,7] + combined_df[,5])
+  precision_1kgenomes = combined_df[,5]/(combined_df[,9] + combined_df[,5])
+  spec_sens_max_other_cancers = specificity_recall + sensitivity_other_cancers
+  spec_sens_max_1kgenomes = specificity_recall + sensitivity_1kgenomes
+  prec_recall_other_cancers = specificity_recall + precision_other_cancers
+  prec_recall_1kgenomes = specificity_recall + precision_1kgenomes
+  max_other_cancers = specificity_recall + sensitivity_other_cancers + precision_other_cancers
+  max_1kgenomes = specificity_recall + sensitivity_1kgenomes + precision_1kgenomes
+  final_df = cbind(combined_df[,c(1:4)], specificity_recall, sensitivity_other_cancers, sensitivity_1kgenomes, precision_other_cancers, precision_1kgenomes,spec_sens_max_other_cancers, spec_sens_max_1kgenomes, prec_recall_other_cancers, prec_recall_1kgenomes, max_other_cancers, max_1kgenomes)
+  return(final_df)
+}
+snv_analysis = cancer_auc(snv_list_cancer_filt, 'BRCA')
+snv_analysis = snv_analysis[order(-snv_analysis$max_other_cancers),]
+saveRDS(snv_analysis, 'snv_analysis1.RDS')
+
+
+#Looking at the number of cases detected with increasing number of variants
+save.image(save)
+variant_build <- function(snv_list_cancer_filt, snv_analysis, cancer, variant_no) {
+  require(plyr)
+  tmp = snv_list_cancer_filt
+  target_cancer_variants = snv_analysis[,c(1:4)]
+  complete_dfs <- function(tmp_df ,variants) {
+    merge.with.order <- function(x,y, ..., sort = T, keep_order)
+    {
+      # this function works just like merge, only that it adds the option to return the merged data.frame ordered by x (1) or by y (2)
+      add.id.column.to.data <- function(DATA)
+      {
+        data.frame(DATA, id... = seq_len(nrow(DATA)))
+      }
+      # add.id.column.to.data(data.frame(x = rnorm(5), x2 = rnorm(5)))
+      order.by.id...and.remove.it <- function(DATA)
+      {
+        # gets in a data.frame with the "id..." column.  Orders by it and returns it
+        if(!any(colnames(DATA)=="id...")) stop("The function order.by.id...and.remove.it only works with data.frame objects which includes the 'id...' order column")
+        
+        ss_r <- order(DATA$id...)
+        ss_c <- colnames(DATA) != "id..."
+        DATA[ss_r, ss_c]
+      }
+      
+      # tmp <- function(x) x==1; 1	# why we must check what to do if it is missing or not...
+      # tmp()
+      
+      if(!missing(keep_order))
+      {
+        if(keep_order == 1) return(order.by.id...and.remove.it(merge(x=add.id.column.to.data(x),y=y,..., sort = FALSE)))
+        if(keep_order == 2) return(order.by.id...and.remove.it(merge(x=x,y=add.id.column.to.data(y),..., sort = FALSE)))
+        # if you didn't get "return" by now - issue a warning.
+        warning("The function merge.with.order only accepts NULL/1/2 values for the keep_order variable")
+      } else {return(merge(x=x,y=y,..., sort = sort))}
+    }
+    tmp3 = merge.with.order(variants, tmp_df,  all = T, by=c('chrom','pos', 'symbol', 'variant_classification'),keep_order = 1)
+    tmp3[,5] = tmp_df[1,5]
+    tmp3[is.na(tmp3)] <- 0
+    return(tmp3)
+  }
+  tmp4 = list()
+  for (i in 1:length(tmp)) {
+    if(nrow(tmp[[i]]) > 0) {
+      tmp4[[i]] = unique(complete_dfs(tmp[[i]], target_cancer_variants))
+      tmp4[[i]] = tmp4[[i]][!duplicated(tmp4[[i]][,c(1:2)]),]
+    } else {
+      tmp4[[i]] =  unique(complete_dfs(tmp[[i]], target_cancer_variants))
+      tmp4[[i]][,5] = gsub('-.*', '', colnames(snv_list_cancer_filt[[i]])[7]) 
+      tmp4[[i]] = tmp4[[i]][!duplicated(tmp4[[i]][,c(1:2)]),]
+    }
+  }
+  variant_no = min(nrow(tmp4[[1]]), variant_no)
+  tmp5 = data.frame(matrix(nrow = variant_no, ncol = length(tmp4)))
+  for (i in 1:variant_no) {
+    tmp_list = list()
+    tmp_df = data.frame(matrix(ncol = length(tmp4), nrow = variant_no))
+    for (j in 1:length(tmp4)) {
+      tmp_list[[j]] = tmp4[[j]][c(1:i),]
+      tmp6 = colSums(tmp_list[[j]][,-c(1:5)])
+      tmp6 = length(tmp6[which(tmp6 > 0)])/length(tmp6)
+      tmp5[i,j] = tmp6
+      ##Fix this
+      colnames(tmp5)[j] = as.character(snv_list_cancer_filt[[j]][1,5])
+    }
+  }
+  tmp7= cbind(data.frame(no_variants = c(1:nrow(tmp5))), tmp5)
+  return(tmp7)
+}
+BRCA_variant_build = variant_build(snv_list_cancer_filt, snv_analysis, 'BRCA', 10000)
+for (i in 1:(ncol(BRCA_variant_build)-1)) {
+  num = i + 1
+  colnames(BRCA_variant_build)[num]  = gsub('_.*','',colnames(snv_list_cancer_filt[[i]])[6])
+}
+require(reshape2)
+BRCA_variant_build_melt = melt(BRCA_variant_build, id.vars = 'no_variants')
+colnames(BRCA_variant_build_melt) = c('no_variants', 'cancer', 'proportion_of_cases')
+saveRDS(BRCA_variant_build_melt, 'BRCA_variant_build_melt1.RDS')
+
+
